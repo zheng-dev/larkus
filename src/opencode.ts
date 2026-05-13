@@ -52,13 +52,17 @@ export async function prompt(
   sessionId: string,
   text: string,
   signal?: AbortSignal,
-): Promise<ReadableStream<Uint8Array>> {
+): Promise<string> {
   const res = await ocFetch(`/session/${sessionId}/message`, {
     method: "POST",
     body: JSON.stringify({ parts: [{ type: "text", text }] }),
     signal,
   })
-  return res.body!
+  const data = await res.json()
+  for (const part of data.parts ?? []) {
+    if (part.type === "text") return part.text as string
+  }
+  return ""
 }
 
 export async function abortSession(sessionId: string): Promise<void> {

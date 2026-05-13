@@ -139,6 +139,7 @@ export async function listMessages(
       content: m.content as string,
       mentions: (m.mentions as Array<Record<string, unknown>>) ?? [],
       position: parseInt((m.message_position as string) ?? "0"),
+      senderType: ((m.sender as Record<string, unknown>)?.sender_type as string) ?? "",
     }))
   } catch {
     return null
@@ -156,4 +157,5 @@ export interface FeishuMessage {
   content: string
   mentions: Array<Record<string, unknown>>
   position: number
+  senderType: string
 }

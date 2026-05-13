@@ -127,7 +127,7 @@ async function pollChat(chatId: string) {
   lastPosition.set(chatId, newMsgs[0].position)
 
   for (const msg of newMsgs.reverse()) {
-    if (msg.msgType === "system") continue
+    if (msg.senderType === "app" || msg.msgType === "system") continue
     const text = parseContent(msg.content)
     if (!text) continue
     await processPollMessage(text, msg.chatId, msg.rootId, msg.messageId)
@@ -287,16 +287,11 @@ async function streamResponse(
   const abortController = new AbortController()
   activeStreams.set(bindingKey, abortController)
 
-  const decoder = new TextDecoder()
-  let cardText = ""
-  let lastUpdate = 0
-  const UPDATE_MS = 800
-
-  const stream = await Opencode.prompt(sessionId, userText, abortController.signal).catch(
+  const text = await Opencode.prompt(sessionId, userText, abortController.signal).catch(
     () => null,
   )
 
-  if (!stream) {
+  if (text === null) {
     await Feishu.updateMessage({
       messageId: cardMsgId,
       content: JSON.stringify(Card.buildErrorCard("无法连接到 opencode 服务")),
@@ -305,44 +300,9 @@ async function streamResponse(
     return
   }
 
-  const reader = stream.getReader()
-  let buffer = ""
-
-  while (true) {
-    const { done, value } = await reader.read().catch(() => ({ done: true, value: undefined }))
-    if (done) break
-
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split("\n")
-    buffer = lines.pop() ?? ""
-
-    for (const line of lines) {
-      if (!line.startsWith("data:")) continue
-      try {
-        const event = JSON.parse(line.slice(5).trim())
-        if (event.type === "message.part.delta") {
-          const delta = event.properties?.delta
-          if (typeof delta === "string") cardText += delta
-        }
-      } catch {
-        // ignore malformed SSE
-      }
-    }
-
-    const now = Date.now()
-    if (now - lastUpdate > UPDATE_MS) {
-      await Feishu.updateMessage({
-        messageId: cardMsgId,
-        content: JSON.stringify(Card.buildStreamingCard(cardText, sessionId)),
-      }).catch(() => {})
-      lastUpdate = now
-    }
-  }
-
-  // Final update
   await Feishu.updateMessage({
     messageId: cardMsgId,
-    content: JSON.stringify(Card.buildResultCard(cardText || "无返回内容", sessionId)),
+    content: JSON.stringify(Card.buildResultCard(text || "无返回内容", sessionId)),
   }).catch(() => {})
 
   activeStreams.delete(bindingKey)
