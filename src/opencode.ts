@@ -1,0 +1,93 @@
+import { Config } from "./config"
+
+function url() {
+  return Config.opencode.url.replace(/\/$/, "")
+}
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const h: Record<string, string> = { "Content-Type": "application/json" }
+  if (Config.opencode.password) {
+    h["Authorization"] = `Basic ${btoa(`opencode:${Config.opencode.password}`)}`
+  }
+  if (extra) Object.assign(h, extra)
+  return h
+}
+
+async function ocFetch(path: string, opts: RequestInit = {}) {
+  const res = await fetch(`${url()}${path}`, {
+    ...opts,
+    headers: authHeaders(opts.headers as Record<string, string> | undefined),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`opencode API 错误 [${path}]: ${res.status} ${text}`)
+  }
+  return res
+}
+
+export async function listSessions(): Promise<OcSession[]> {
+  const res = await ocFetch("/session")
+  return res.json()
+}
+
+export async function createSession(title?: string): Promise<OcSession> {
+  const res = await ocFetch("/session", {
+    method: "POST",
+    body: JSON.stringify({ title: title ?? "飞书对话" }),
+  })
+  return res.json()
+}
+
+export async function getSession(id: string): Promise<OcSession | null> {
+  const res = await ocFetch(`/session/${id}`)
+  return res.json()
+}
+
+export async function getMessages(sessionId: string): Promise<Array<{ info: OcMessage; parts: OcPart[] }>> {
+  const res = await ocFetch(`/session/${sessionId}/message`)
+  return res.json()
+}
+
+export async function prompt(
+  sessionId: string,
+  text: string,
+  signal?: AbortSignal,
+): Promise<ReadableStream<Uint8Array>> {
+  const res = await ocFetch(`/session/${sessionId}/message`, {
+    method: "POST",
+    body: JSON.stringify({ parts: [{ type: "text", text }] }),
+    signal,
+  })
+  return res.body!
+}
+
+export async function abortSession(sessionId: string): Promise<void> {
+  await ocFetch(`/session/${sessionId}/abort`, { method: "POST" })
+}
+
+export interface OcSession {
+  id: string
+  slug: string
+  title: string
+  projectID: string
+  time: { created: number; updated: number }
+  summary?: { additions: number; deletions: number; files: number }
+  share?: { url: string }
+}
+
+export interface OcMessage {
+  id: string
+  sessionID: string
+  role: string
+  time: { created: number }
+}
+
+export interface OcPart {
+  id: string
+  sessionID: string
+  messageID: string
+  type: string
+  text?: string
+  tool?: { name: string; description?: string }
+  state?: { status: string; title?: string; input?: Record<string, unknown>; output?: Record<string, unknown> }
+}

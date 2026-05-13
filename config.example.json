@@ -1,0 +1,19 @@
+{
+  "feishu": {
+    "appId": "",
+    "appSecret": ""
+  },
+  "opencode": {
+    "url": "http://localhost:4096",
+    "password": ""
+  },
+  "mode": "polling",
+  "polling": {
+    "watchChats": [],
+    "interval": 3
+  },
+  "webhook": {
+    "port": 3000,
+    "verificationToken": ""
+  }
+}
