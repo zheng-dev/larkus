@@ -27,11 +27,11 @@ if (orphans.length > 0) {
       const msgs = await Opencode.getMessages(entry.sessionId)
       const lastAssistant = msgs?.findLast(m => m.info.role === "assistant")
       if (lastAssistant) {
-        const text = lastAssistant.parts.find(p => p.type === "text")?.text
+          const text = lastAssistant.parts.find(p => p.type === "text")?.text
         if (text) {
           await Feishu.updateMessage({
             messageId: entry.cardMsgId,
-            content: JSON.stringify(Card.buildResultCard(text, entry.sessionId)),
+            content: JSON.stringify(Card.buildResultCard(text, entry.sessionId, Opencode.getCachedSession(entry.sessionId)?.title)),
           })
           info(`已恢复孤儿卡片`, { sessionId: entry.sessionId, key: entry.key })
         } else {

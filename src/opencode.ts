@@ -40,9 +40,19 @@ async function ocFetch(path: string, opts: RequestInit = {}) {
   return res
 }
 
+const sessionCache = new Map<string, OcSession>()
+
+export function getCachedSession(id: string): OcSession | undefined {
+  return sessionCache.get(id)
+}
+
 export async function listSessions(): Promise<OcSession[]> {
   const res = await ocFetch("/session")
-  return res.json()
+  const sessions: OcSession[] = await res.json()
+  for (const s of sessions) {
+    sessionCache.set(s.id, s)
+  }
+  return sessions
 }
 
 export async function createSession(title?: string): Promise<OcSession> {
@@ -50,12 +60,20 @@ export async function createSession(title?: string): Promise<OcSession> {
     method: "POST",
     body: JSON.stringify({ title: title ?? "飞书对话" }),
   })
-  return res.json()
+  const session: OcSession = await res.json()
+  sessionCache.set(session.id, session)
+  return session
 }
 
 export async function getSession(id: string): Promise<OcSession | null> {
+  const cached = sessionCache.get(id)
+  if (cached) return cached
   const res = await ocFetch(`/session/${id}`)
-  return res.json()
+  const session: OcSession | null = await res.json()
+  if (session) {
+    sessionCache.set(session.id, session)
+  }
+  return session
 }
 
 export async function getMessages(sessionId: string): Promise<Array<{ info: OcMessage; parts: OcPart[] }>> {

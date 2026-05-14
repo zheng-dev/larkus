@@ -85,9 +85,19 @@ async function processCommand(
   switch (cmd.name) {
     case "list": {
       const sessions = (await Opencode.listSessions()) ?? []
+      let page: number | undefined
+      let keyword: string | undefined
+      if (cmd.args) {
+        const num = parseInt(cmd.args, 10)
+        if (!isNaN(num) && String(num) === cmd.args) {
+          page = num
+        } else {
+          keyword = cmd.args
+        }
+      }
       await Feishu.replyMessage({
         messageId,
-        content: JSON.stringify(Card.buildSessionListCard(sessions, key)),
+        content: JSON.stringify(Card.buildSessionListCard(sessions, key, { page, keyword })),
       })
       break
     }
@@ -159,7 +169,7 @@ async function processCommand(
       await Opencode.abortSession(sessionId)
       await Feishu.replyMessage({
         messageId,
-        content: JSON.stringify(Card.buildAbortCard(sessionId)),
+        content: JSON.stringify(Card.buildAbortCard(sessionId, Opencode.getCachedSession(sessionId)?.title)),
       })
       break
     }
@@ -194,6 +204,8 @@ async function processChatMessage(
     setBinding(chatId, rootId, sessionId)
   }
 
+  const sessionTitle = Opencode.getCachedSession(sessionId)?.title
+
   // Abort any existing stream for this thread
   const existing = activeStreams.get(key)
   if (existing) {
@@ -204,7 +216,7 @@ async function processChatMessage(
 
   const cardMsgId = await Feishu.replyMessage({
     messageId,
-    content: JSON.stringify(Card.buildThinkingCard(sessionId)),
+    content: JSON.stringify(Card.buildThinkingCard(sessionId, sessionTitle)),
   })
 
   if (!cardMsgId) {
@@ -214,7 +226,7 @@ async function processChatMessage(
 
   addPendingCard(key, sessionId, cardMsgId)
 
-  await streamResponse(sessionId, text, cardMsgId, key)
+  await streamResponse(sessionId, text, cardMsgId, key, sessionTitle)
 }
 
 async function streamResponse(
@@ -222,6 +234,7 @@ async function streamResponse(
   userText: string,
   cardMsgId: string,
   bindingKey: string,
+  sessionTitle?: string,
 ) {
   const abortController = new AbortController()
   activeStreams.set(bindingKey, abortController)
@@ -235,7 +248,7 @@ async function streamResponse(
       async (display) => {
         await Feishu.updateMessage({
           messageId: cardMsgId,
-          content: JSON.stringify(Card.buildStreamingCard(display, sessionId)),
+          content: JSON.stringify(Card.buildStreamingCard(display, sessionId, sessionTitle)),
         }).catch(() => {})
       },
       abortController.signal,
@@ -243,7 +256,7 @@ async function streamResponse(
 
     await Feishu.updateMessage({
       messageId: cardMsgId,
-      content: JSON.stringify(Card.buildResultCard(finalText || "无返回内容", sessionId)),
+      content: JSON.stringify(Card.buildResultCard(finalText || "无返回内容", sessionId, sessionTitle)),
     }).catch(() => {})
 
   } catch (err) {

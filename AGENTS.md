@@ -16,3 +16,5 @@ bun run dev
 # TypeScript 类型检查
 bun run typecheck
 ```
+## 排查问题时
+- 查看opencode服务的聊天日志用的url http://localhost:4096/session/ses_1de20d98bffe1h4B2sqKo3ue6E/message
