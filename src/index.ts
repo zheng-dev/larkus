@@ -3,6 +3,7 @@ import { runSetup } from "./setup"
 import { loadBindings } from "./session"
 import { info } from "./logger"
 import { loadPendingCards, getPendingEntries, clearPendingCards } from "./pending_cards"
+import * as Pagination from "./pagination"
 import * as Opencode from "./opencode"
 import * as Feishu from "./feishu"
 import * as Card from "./card"
@@ -16,9 +17,12 @@ const cfg = (await fileExists()) ? await load() : await (async () => {
 init(cfg)
 
 await loadBindings()
-info("已加载 session 绑定")
+const now = new Date()
+
+info('已加载 session 绑定 time:' + now.toLocaleString())
 
 await loadPendingCards()
+await Pagination.loadPagination()
 const orphans = getPendingEntries()
 if (orphans.length > 0) {
   info(`发现 ${orphans.length} 个孤儿卡片，正在修复...`)
@@ -27,7 +31,7 @@ if (orphans.length > 0) {
       const msgs = await Opencode.getMessages(entry.sessionId)
       const lastAssistant = msgs?.findLast(m => m.info.role === "assistant")
       if (lastAssistant) {
-          const text = lastAssistant.parts.find(p => p.type === "text")?.text
+        const text = lastAssistant.parts.find(p => p.type === "text")?.text
         if (text) {
           await Feishu.updateMessage({
             messageId: entry.cardMsgId,

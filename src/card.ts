@@ -56,25 +56,40 @@ export function buildStreamingCard(text: string, sessionId?: string, sessionTitl
   }
 }
 
-export function buildResultCard(text: string, sessionId?: string, sessionTitle?: string): Card {
+export function buildResultCard(
+  text: string,
+  sessionId?: string,
+  sessionTitle?: string,
+  pageInfo?: { page: number; total: number },
+): Card {
+  const elements: Array<Record<string, unknown>> = [
+    { tag: "div", text: { tag: "lark_md", content: text } },
+  ]
+
+  if (sessionId) {
+    elements.push({ tag: "hr" })
+    if (pageInfo && pageInfo.total > 1) {
+      elements.push({
+        tag: "note",
+        elements: [
+          { tag: "plain_text", content: `📄 第 ${pageInfo.page}/${pageInfo.total} 页  |  ${sessionLabel(sessionId, sessionTitle)}  |  回复 /p 翻页` },
+        ],
+      })
+    } else {
+      elements.push({
+        tag: "note",
+        elements: [{ tag: "plain_text", content: sessionLabel(sessionId, sessionTitle) }],
+      })
+    }
+  }
+
   return {
     config: { wide_screen_mode: true, update_multi: true },
     header: {
       title: { tag: "plain_text", content: "✅ opencode" },
       template: "green",
     },
-    elements: [
-      { tag: "div", text: { tag: "lark_md", content: truncate(text) } },
-      ...(sessionId ? [
-        { tag: "hr" },
-        {
-          tag: "note",
-          elements: [
-            { tag: "plain_text", content: sessionLabel(sessionId, sessionTitle) },
-          ],
-        },
-      ] : []),
-    ],
+    elements,
   }
 }
 
@@ -108,13 +123,15 @@ export function buildHelpCard(): Card {
           content: [
             "**命令列表:**",
             "",
-            "• **@opencode `<消息>`** — 在当前 Session 中继续对话",
-            "• **/list `[数字|关键词]`** — 列出/搜索 Session",
-            "• **/new `[标题]`** — 创建新 Session",
-            "• **/switch `<slug>`** — 切换到指定 Session",
-            "• **/status** — 查看当前 Session 状态",
-            "• **/abort** — 中止正在运行的任务",
-            "• **/help** — 显示此帮助",
+              "• **@opencode `<消息>`** — 在当前 Session 中继续对话",
+              "",
+              "• **/list `[数字|关键词]`** — 列出/搜索 Session",
+              "• **/new `[标题]`** — 创建新 Session",
+              "• **/switch `<slug>`** — 切换到指定 Session",
+              "• **/status** — 查看当前 Session 状态",
+              "• **/abort** — 中止正在运行的任务",
+              "• **/p `[页码]`** — 翻页查看过长回复",
+              "• **/help** — 显示此帮助",
           ].join("\n"),
         },
       },

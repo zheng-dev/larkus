@@ -3,6 +3,7 @@ import { getBinding, setBinding, removeBinding } from "./session"
 import * as Opencode from "./opencode"
 import * as Feishu from "./feishu"
 import * as Card from "./card"
+import * as Pagination from "./pagination"
 import { error } from "./logger"
 import { addPendingCard, removePendingCard } from "./pending_cards"
 
@@ -173,6 +174,26 @@ async function processCommand(
       })
       break
     }
+    case "p": {
+      const pageNum = cmd.args ? parseInt(cmd.args, 10) : undefined
+      if (cmd.args && (isNaN(pageNum!) || String(pageNum) !== cmd.args)) {
+        await Feishu.replyText(messageId, "用法: `/p` 翻下页 或 `/p <数字>` 跳转指定页")
+        return
+      }
+      const result = Pagination.getPage(key, pageNum)
+      if (!result) {
+        await Feishu.replyText(messageId, "内容已过期，请重新发送消息")
+        return
+      }
+      const pageText = [
+        `📄 **第 ${result.page}/${result.total} 页**`,
+        "",
+        result.content,
+        ...(result.page < result.total ? ["", `回复 **/p** 翻下一页`] : []),
+      ].join("\n")
+      await Feishu.replyText(messageId, pageText)
+      break
+    }
     case "help": {
       await Feishu.replyMessage({
         messageId,
@@ -254,9 +275,12 @@ async function streamResponse(
       abortController.signal,
     )
 
+    const fullText = finalText || "无返回内容"
+    const firstPage = Pagination.storeText(bindingKey, fullText)
+
     await Feishu.updateMessage({
       messageId: cardMsgId,
-      content: JSON.stringify(Card.buildResultCard(finalText || "无返回内容", sessionId, sessionTitle)),
+      content: JSON.stringify(Card.buildResultCard(firstPage.content, sessionId, sessionTitle, { page: firstPage.page, total: firstPage.total })),
     }).catch(() => {})
 
   } catch (err) {
