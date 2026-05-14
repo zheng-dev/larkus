@@ -1,6 +1,7 @@
 import { init, load, save, fileExists, Config } from "./config"
 import { runSetup } from "./setup"
 import { loadBindings } from "./session"
+import { info } from "./logger"
 
 const cfg = (await fileExists()) ? await load() : await (async () => {
   console.log("config.json 未找到，进入首次配置...\n")
@@ -11,7 +12,7 @@ const cfg = (await fileExists()) ? await load() : await (async () => {
 init(cfg)
 
 await loadBindings()
-console.log("✅ 已加载 session 绑定")
+info("已加载 session 绑定")
 
 if (cfg.mode === "webhook") {
   const { handleWebhook } = await import("./bot")
@@ -30,16 +31,14 @@ if (cfg.mode === "webhook") {
     },
   })
 
-  console.log(`🟢 oc-lark webhook 模式: http://localhost:${server.port}/webhook`)
-  console.log(`   opencode: ${Config.opencode.url}`)
+  info(`webhook 模式启动`, { port: server.port, opencode: Config.opencode.url })
 } else {
   const { startPolling } = await import("./polling")
 
   for (const chatId of cfg.polling.watchChats) {
     console.log(`   监控群聊: ${chatId}`)
   }
-  console.log(`🟢 oc-lark 轮询模式 (${cfg.polling.interval}s 间隔)`)
-  console.log(`   opencode: ${Config.opencode.url}`)
+  info("轮询模式启动", { interval: cfg.polling.interval, opencode: Config.opencode.url, chats: cfg.polling.watchChats })
 
   startPolling(cfg.polling.watchChats, cfg.polling.interval)
 }

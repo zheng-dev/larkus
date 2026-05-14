@@ -1,4 +1,5 @@
 import { Config } from "./config"
+import { error } from "./logger"
 
 function url() {
   return Config.opencode.url.replace(/\/$/, "")
@@ -14,13 +15,23 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
 }
 
 async function ocFetch(path: string, opts: RequestInit = {}) {
-  const res = await fetch(`${url()}${path}`, {
-    ...opts,
-    headers: authHeaders(opts.headers as Record<string, string> | undefined),
-  })
+  const fullUrl = `${url()}${path}`
+  let res: Response
+  try {
+    res = await fetch(fullUrl, {
+      ...opts,
+      headers: authHeaders(opts.headers as Record<string, string> | undefined),
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    error("opencode 连接失败", { url: fullUrl, reason: msg })
+    throw err
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "")
-    throw new Error(`opencode API 错误 [${path}]: ${res.status} ${text}`)
+    const errMsg = `opencode API 错误 [${path}]: ${res.status} ${text.slice(0, 500)}`
+    error(errMsg, { url: fullUrl, status: res.status, body: text.slice(0, 500) })
+    throw new Error(errMsg)
   }
   return res
 }

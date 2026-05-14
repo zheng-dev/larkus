@@ -1,5 +1,7 @@
 node_modules/
 config.json
 data/bindings.json
+data/*.log
 *.log
 dist/
+.vscode/

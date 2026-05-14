@@ -3,6 +3,7 @@ import { getBinding, setBinding, removeBinding } from "./session"
 import * as Opencode from "./opencode"
 import * as Feishu from "./feishu"
 import * as Card from "./card"
+import { error } from "./logger"
 
 const activeStreams = new Map<string, AbortController>()
 
@@ -221,14 +222,23 @@ async function streamResponse(
   const abortController = new AbortController()
   activeStreams.set(bindingKey, abortController)
 
+  let promptErr: string | null = null
   const text = await Opencode.prompt(sessionId, userText, abortController.signal).catch(
-    () => null,
+    (err) => {
+      promptErr = err instanceof Error ? err.message : String(err)
+      return null
+    },
   )
 
   if (text === null) {
+    const reason = promptErr ?? "未知错误"
+    error("streamResponse 失败", { sessionId, userText: userText.slice(0, 200), reason })
+    const display = reason.includes("fetch") || reason.includes("connect") || reason.includes("ECONN")
+      ? "无法连接到 opencode 服务"
+      : "opencode 处理出错（详情见日志）"
     await Feishu.updateMessage({
       messageId: cardMsgId,
-      content: JSON.stringify(Card.buildErrorCard("无法连接到 opencode 服务")),
+      content: JSON.stringify(Card.buildErrorCard(display)),
     })
     activeStreams.delete(bindingKey)
     return
