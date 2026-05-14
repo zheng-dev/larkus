@@ -199,6 +199,7 @@ async function processChatMessage(
   if (existing) {
     existing.abort()
     activeStreams.delete(key)
+    Opencode.abortSession(sessionId).catch(() => {})
   }
 
   const cardMsgId = await Feishu.replyMessage({
@@ -247,6 +248,12 @@ async function streamResponse(
 
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)
+    if (reason === "Aborted") {
+      // 正常中断：用户发了新消息，主动取消旧的 stream
+      removePendingCard(bindingKey)
+      activeStreams.delete(bindingKey)
+      return
+    }
     error("streamResponse 失败", { sessionId, userText: userText.slice(0, 200), reason })
     const display = reason.includes("fetch") || reason.includes("connect") || reason.includes("ECONN")
       ? "无法连接到 opencode 服务"

@@ -117,7 +117,7 @@ export function buildStreamContent(parts: OcPart[]): { display: string; rawText:
     display = "🔄 正在思考中..."
   }
 
-  const isFinal = finish ? (finish.reason === "stop" || finish.reason === "tool-calls") : false
+  const isFinal = finish?.reason === "stop"
 
   return { display, rawText, isFinal }
 }
