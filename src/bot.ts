@@ -4,6 +4,7 @@ import * as Opencode from "./opencode"
 import * as Feishu from "./feishu"
 import * as Card from "./card"
 import { error } from "./logger"
+import { addPendingCard, removePendingCard } from "./pending_cards"
 
 const activeStreams = new Map<string, AbortController>()
 
@@ -210,6 +211,8 @@ async function processChatMessage(
     return
   }
 
+  addPendingCard(key, sessionId, cardMsgId)
+
   await streamResponse(sessionId, text, cardMsgId, key)
 }
 
@@ -222,16 +225,28 @@ async function streamResponse(
   const abortController = new AbortController()
   activeStreams.set(bindingKey, abortController)
 
-  let promptErr: string | null = null
-  const text = await Opencode.prompt(sessionId, userText, abortController.signal).catch(
-    (err) => {
-      promptErr = err instanceof Error ? err.message : String(err)
-      return null
-    },
-  )
+  let finalText = ""
 
-  if (text === null) {
-    const reason = promptErr ?? "未知错误"
+  try {
+    finalText = await Opencode.streamPrompt(
+      sessionId,
+      userText,
+      async (display) => {
+        await Feishu.updateMessage({
+          messageId: cardMsgId,
+          content: JSON.stringify(Card.buildStreamingCard(display, sessionId)),
+        }).catch(() => {})
+      },
+      abortController.signal,
+    )
+
+    await Feishu.updateMessage({
+      messageId: cardMsgId,
+      content: JSON.stringify(Card.buildResultCard(finalText || "无返回内容", sessionId)),
+    }).catch(() => {})
+
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
     error("streamResponse 失败", { sessionId, userText: userText.slice(0, 200), reason })
     const display = reason.includes("fetch") || reason.includes("connect") || reason.includes("ECONN")
       ? "无法连接到 opencode 服务"
@@ -239,15 +254,9 @@ async function streamResponse(
     await Feishu.updateMessage({
       messageId: cardMsgId,
       content: JSON.stringify(Card.buildErrorCard(display)),
-    })
-    activeStreams.delete(bindingKey)
-    return
+    }).catch(() => {})
   }
 
-  await Feishu.updateMessage({
-    messageId: cardMsgId,
-    content: JSON.stringify(Card.buildResultCard(text || "无返回内容", sessionId)),
-  }).catch(() => {})
-
+  removePendingCard(bindingKey)
   activeStreams.delete(bindingKey)
 }

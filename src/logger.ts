@@ -41,3 +41,7 @@ export function warn(msg: string, ctx?: Record<string, unknown>) {
   console.warn(msg)
   log("WARN", msg, ctx)
 }
+
+export function debug(msg: string, ctx?: Record<string, unknown>) {
+  log("DEBUG", msg, ctx)
+}

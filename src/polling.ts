@@ -3,11 +3,13 @@ import * as Feishu from "./feishu"
 import * as Card from "./card"
 import { Config } from "./config"
 import { getBinding, setBinding, removeBinding } from "./session"
-import { error } from "./logger"
+import { error, warn, debug } from "./logger"
+import { addPendingCard, removePendingCard } from "./pending_cards"
 
 const activeStreams = new Map<string, AbortController>()
 const lastPosition = new Map<string, number>()
 const unreachable = new Set<string>()
+let pollCycle = 0
 
 function streamKey(chatId: string, rootId: string): string {
   return `${chatId}:${rootId || ""}`
@@ -34,7 +36,7 @@ export async function startPolling(chatIds: string[], intervalSec: number) {
         continue
       }
       if (msgs.length) {
-        lastPosition.set(chatId, msgs[0].position)
+        lastPosition.set(chatId, msgs[0].position - 1)
       }
     }
 
@@ -79,6 +81,15 @@ export async function startPolling(chatIds: string[], intervalSec: number) {
   console.log("轮询已启动")
 
   setInterval(() => {
+    pollCycle++
+    debug(`轮询心跳 #${pollCycle}`, { chats: chatIds.filter(c => !unreachable.has(c)).length })
+
+    // 每 5 个周期清空 unreachable，给之前失败的群聊一次重试机会
+    if (pollCycle % 5 === 0 && unreachable.size > 0) {
+      warn("清除 unreachable 状态，重新尝试", { chats: [...unreachable] })
+      unreachable.clear()
+    }
+
     for (const chatId of chatIds) {
       if (unreachable.has(chatId)) continue
       pollChat(chatId).catch(err =>
@@ -116,6 +127,7 @@ async function reconfigChats(current: string[]): Promise<string[]> {
 async function pollChat(chatId: string) {
   const msgs = await Feishu.listMessages(chatId, { pageSize: 10, sortType: "ByCreateTimeDesc" })
   if (msgs === null) {
+    error("lark-cli 获取消息失败，标记 unreachable（每 5 周期重试）", { chatId })
     unreachable.add(chatId)
     return
   }
@@ -123,6 +135,18 @@ async function pollChat(chatId: string) {
 
   const since = lastPosition.get(chatId) ?? 0
   const newMsgs = msgs.filter(m => m.position > since)
+
+  // 记录被过滤掉的消息，方便排查误过滤
+  const skipped = msgs.filter(
+    m => m.position > since && (m.senderType === "app" || m.msgType === "system" || !parseContent(m.content)),
+  )
+  if (skipped.length > 0) {
+    debug("轮询跳过消息", {
+      chatId,
+      skipped: skipped.map(m => ({ pos: m.position, sender: m.senderType, type: m.msgType })),
+    })
+  }
+
   if (!newMsgs.length) return
 
   lastPosition.set(chatId, newMsgs[0].position)
@@ -131,6 +155,7 @@ async function pollChat(chatId: string) {
     if (msg.senderType === "app" || msg.msgType === "system") continue
     const text = parseContent(msg.content)
     if (!text) continue
+    debug("轮询处理消息", { chatId, pos: msg.position, senderType: msg.senderType, msgType: msg.msgType, text: text.slice(0, 100) })
     await processPollMessage(text, msg.chatId, msg.rootId, msg.messageId)
   }
 }
@@ -276,6 +301,8 @@ async function processChatMessage(
     return
   }
 
+  addPendingCard(key, sessionId, cardMsgId)
+
   await streamResponse(sessionId, text, cardMsgId, key)
 }
 
@@ -288,16 +315,28 @@ async function streamResponse(
   const abortController = new AbortController()
   activeStreams.set(bindingKey, abortController)
 
-  let promptErr: string | null = null
-  const text = await Opencode.prompt(sessionId, userText, abortController.signal).catch(
-    (err) => {
-      promptErr = err instanceof Error ? err.message : String(err)
-      return null
-    },
-  )
+  let finalText = ""
 
-  if (text === null) {
-    const reason = promptErr ?? "未知错误"
+  try {
+    finalText = await Opencode.streamPrompt(
+      sessionId,
+      userText,
+      async (display) => {
+        await Feishu.updateMessage({
+          messageId: cardMsgId,
+          content: JSON.stringify(Card.buildStreamingCard(display, sessionId)),
+        }).catch(() => {})
+      },
+      abortController.signal,
+    )
+
+    await Feishu.updateMessage({
+      messageId: cardMsgId,
+      content: JSON.stringify(Card.buildResultCard(finalText || "无返回内容", sessionId)),
+    }).catch(() => {})
+
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
     error("streamResponse 失败", { sessionId, userText: userText.slice(0, 200), reason })
     const display = reason.includes("fetch") || reason.includes("connect") || reason.includes("ECONN")
       ? "无法连接到 opencode 服务"
@@ -305,15 +344,9 @@ async function streamResponse(
     await Feishu.updateMessage({
       messageId: cardMsgId,
       content: JSON.stringify(Card.buildErrorCard(display)),
-    })
-    activeStreams.delete(bindingKey)
-    return
+    }).catch(() => {})
   }
 
-  await Feishu.updateMessage({
-    messageId: cardMsgId,
-    content: JSON.stringify(Card.buildResultCard(text || "无返回内容", sessionId)),
-  }).catch(() => {})
-
+  removePendingCard(bindingKey)
   activeStreams.delete(bindingKey)
 }

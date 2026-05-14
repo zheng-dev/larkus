@@ -1,4 +1,5 @@
 import { Config } from "./config"
+import { error } from "./logger"
 
 const BASE = "https://open.feishu.cn/open-apis"
 
@@ -121,12 +122,21 @@ export async function listMessages(
     stderr: "pipe",
   })
 
-  const text = await new Response(proc.stdout).text()
-  await proc.exited
+  const outText = await new Response(proc.stdout).text()
+  const errText = await new Response(proc.stderr).text()
+  const exitCode = await proc.exited
+
+  if (exitCode !== 0) {
+    error("lark-cli 退出非零", { chatId, exitCode, stderr: errText.slice(0, 500) })
+    return null
+  }
 
   try {
-    const data = JSON.parse(text)
-    if (!data?.ok || !data.data?.messages) return null
+    const data = JSON.parse(outText)
+    if (!data?.ok || !data.data?.messages) {
+      error("lark-cli 返回异常", { chatId, ok: data?.ok, stderr: errText.slice(0, 300) })
+      return null
+    }
 
     return data.data.messages.map((m: Record<string, unknown>) => ({
       messageId: m.message_id as string,
@@ -142,6 +152,7 @@ export async function listMessages(
       senderType: ((m.sender as Record<string, unknown>)?.sender_type as string) ?? "",
     }))
   } catch {
+    error("lark-cli JSON 解析失败", { chatId, raw: outText.slice(0, 500), stderr: errText.slice(0, 300) })
     return null
   }
 }

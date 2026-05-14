@@ -2,6 +2,10 @@ import { init, load, save, fileExists, Config } from "./config"
 import { runSetup } from "./setup"
 import { loadBindings } from "./session"
 import { info } from "./logger"
+import { loadPendingCards, getPendingEntries, clearPendingCards } from "./pending_cards"
+import * as Opencode from "./opencode"
+import * as Feishu from "./feishu"
+import * as Card from "./card"
 
 const cfg = (await fileExists()) ? await load() : await (async () => {
   console.log("config.json 未找到，进入首次配置...\n")
@@ -13,6 +17,43 @@ init(cfg)
 
 await loadBindings()
 info("已加载 session 绑定")
+
+await loadPendingCards()
+const orphans = getPendingEntries()
+if (orphans.length > 0) {
+  info(`发现 ${orphans.length} 个孤儿卡片，正在修复...`)
+  for (const entry of orphans) {
+    try {
+      const msgs = await Opencode.getMessages(entry.sessionId)
+      const lastAssistant = msgs?.findLast(m => m.info.role === "assistant")
+      if (lastAssistant) {
+        const text = lastAssistant.parts.find(p => p.type === "text")?.text
+        if (text) {
+          await Feishu.updateMessage({
+            messageId: entry.cardMsgId,
+            content: JSON.stringify(Card.buildResultCard(text, entry.sessionId)),
+          })
+          info(`已恢复孤儿卡片`, { sessionId: entry.sessionId, key: entry.key })
+        } else {
+          await Feishu.updateMessage({
+            messageId: entry.cardMsgId,
+            content: JSON.stringify(Card.buildErrorCard("服务已重启，请重新发送消息")),
+          })
+        }
+      } else {
+        info(`孤儿卡片暂无结果，更新为重试提示`, { sessionId: entry.sessionId })
+        await Feishu.updateMessage({
+          messageId: entry.cardMsgId,
+          content: JSON.stringify(Card.buildErrorCard("服务已重启，openCode 仍在处理中，请稍后重试")),
+        })
+      }
+    } catch (err) {
+      info(`孤儿卡片修复失败`, { key: entry.key, reason: err instanceof Error ? err.message : String(err) })
+    }
+  }
+  clearPendingCards()
+  info("孤儿卡片清理完毕")
+}
 
 if (cfg.mode === "webhook") {
   const { handleWebhook } = await import("./bot")

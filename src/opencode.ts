@@ -1,5 +1,5 @@
 import { Config } from "./config"
-import { error } from "./logger"
+import { error, debug } from "./logger"
 
 function url() {
   return Config.opencode.url.replace(/\/$/, "")
@@ -12,6 +12,10 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
   }
   if (extra) Object.assign(h, extra)
   return h
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 async function ocFetch(path: string, opts: RequestInit = {}) {
@@ -76,6 +80,92 @@ export async function prompt(
   return ""
 }
 
+export async function promptAsync(
+  sessionId: string,
+  text: string,
+): Promise<void> {
+  await ocFetch(`/session/${sessionId}/prompt_async`, {
+    method: "POST",
+    body: JSON.stringify({ parts: [{ type: "text", text }] }),
+  })
+}
+
+export function buildStreamContent(parts: OcPart[]): { display: string; rawText: string; isFinal: boolean } {
+  const reasoning = parts.find(p => p.type === "reasoning")
+  const text = parts.find(p => p.type === "text")
+  const toolParts = parts.filter(p => p.type === "tool")
+  const finish = parts.find(p => p.type === "step-finish")
+
+  let display = ""
+  let rawText = text?.text ?? ""
+
+  if (reasoning?.text) {
+    display += `🤔 **分析中...**\n${reasoning.text.slice(0, 2000)}\n\n`
+  }
+  for (const tp of toolParts) {
+    const name = tp.tool?.name ?? "unknown"
+    const status = tp.state?.status ?? "running"
+    const title = tp.state?.title ?? name
+    display += `🔧 **${status === "completed" ? "已完成" : "执行中"}:** ${title}\n`
+  }
+  if (display) display += "\n"
+  if (rawText) {
+    display += rawText
+  }
+
+  if (!display) {
+    display = "🔄 正在思考中..."
+  }
+
+  const isFinal = finish ? (finish.reason === "stop" || finish.reason === "tool-calls") : false
+
+  return { display, rawText, isFinal }
+}
+
+export async function streamPrompt(
+  sessionId: string,
+  userText: string,
+  onUpdate: (display: string) => Promise<void>,
+  signal?: AbortSignal,
+): Promise<string> {
+  await promptAsync(sessionId, userText)
+
+  let lastDisplay = "🔄 正在思考中..."
+  let finalText = ""
+
+  while (!signal?.aborted) {
+    await sleep(2000)
+
+    let msgs: Array<{ info: OcMessage; parts: OcPart[] }>
+    try {
+      msgs = await getMessages(sessionId)
+    } catch {
+      continue
+    }
+
+    const assistantMsgs = msgs.filter(m => m.info.role === "assistant")
+    if (assistantMsgs.length === 0) continue
+
+    const lastMsg = assistantMsgs[assistantMsgs.length - 1]
+    const { display, rawText, isFinal } = buildStreamContent(lastMsg.parts)
+
+    if (display !== lastDisplay) {
+      lastDisplay = display
+      await onUpdate(display).catch(() => {})
+    }
+
+    if (rawText) finalText = rawText
+
+    if (isFinal) {
+      debug("streamPrompt 完成", { sessionId })
+      return finalText
+    }
+  }
+
+  if (signal?.aborted) throw new Error("Aborted")
+  return finalText
+}
+
 export async function abortSession(sessionId: string): Promise<void> {
   await ocFetch(`/session/${sessionId}/abort`, { method: "POST" })
 }
@@ -103,6 +193,7 @@ export interface OcPart {
   messageID: string
   type: string
   text?: string
+  reason?: string
   tool?: { name: string; description?: string }
   state?: { status: string; title?: string; input?: Record<string, unknown>; output?: Record<string, unknown> }
 }

@@ -1,6 +1,7 @@
 node_modules/
 config.json
 data/bindings.json
+data/pending_cards.json
 data/*.log
 *.log
 dist/
