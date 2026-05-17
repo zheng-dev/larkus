@@ -1,5 +1,12 @@
+/**
+ * setup - 首次配置向导
+ *
+ * 交互式引导用户完成飞书应用、opencode 连接、运行模式等配置。
+ * 支持自动检测 lark-cli 已配置的应用和用户可访问的群聊列表。
+ */
 import type { Config } from "./config"
 
+/** 生成配置步骤的标题框 */
 const box = (title: string) => `\n${"=".repeat(52)}\n  ${title}\n${"=".repeat(52)}`
 
 function ask(msg: string): string {
@@ -67,6 +74,10 @@ function showChatIdHelp() {
   console.log("    或命令行: lark-cli api GET /open-apis/im/v1/chats?user_id_type=open_id")
 }
 
+/**
+ * 运行交互式配置向导
+ * 依次收集飞书应用、opencode 连接、运行模式等配置，生成 Config 对象。
+ */
 export async function runSetup(): Promise<Config> {
   console.log(box("oc-lark 首次配置"))
 

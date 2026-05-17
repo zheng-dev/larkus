@@ -1,8 +1,15 @@
+/**
+ * feishu - 飞书开放平台 API 封装
+ *
+ * 提供 tenant_access_token 获取与缓存、消息发送/回复/更新，
+ * 以及通过 lark-cli 拉取群聊消息列表的能力。
+ */
 import { Config } from "./config"
 import { error } from "./logger"
 
 const BASE = "https://open.feishu.cn/open-apis"
 
+/** 缓存的 tenant_access_token，提前 5 分钟过期 */
 let cachedToken: { token: string; expiresAt: number } | null = null
 
 async function getTenantAccessToken(): Promise<string> {
@@ -44,6 +51,7 @@ async function feishuFetch(path: string, opts: RequestInit = {}) {
   return data
 }
 
+/** 向指定群聊发送消息，返回消息 ID */
 export async function sendMessage(params: {
   chatId: string
   content: string
@@ -63,6 +71,7 @@ export async function sendMessage(params: {
   return data?.data?.message_id ?? null
 }
 
+/** 回复指定消息（用于消息卡片），返回新消息 ID */
 export async function replyMessage(params: {
   messageId: string
   content: string
@@ -81,6 +90,7 @@ export async function replyMessage(params: {
   return data?.data?.message_id ?? null
 }
 
+/** 更新已发送的消息卡片内容 */
 export async function updateMessage(params: {
   messageId: string
   content: string
@@ -96,6 +106,7 @@ export async function updateMessage(params: {
   )
 }
 
+/** 以纯文本方式回复消息 */
 export async function replyText(messageId: string, text: string): Promise<string | null> {
   return replyMessage({
     messageId,
@@ -104,6 +115,7 @@ export async function replyText(messageId: string, text: string): Promise<string
   })
 }
 
+/** 通过 lark-cli 拉取群聊消息列表 */
 export async function listMessages(
   chatId: string,
   opts?: { pageSize?: number; pageToken?: string; sortType?: string },

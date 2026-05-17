@@ -1,5 +1,12 @@
+/**
+ * card - 飞书消息卡片构建器
+ *
+ * 构建飞书交互式卡片 JSON（思考中/流式输出/结果/错误/帮助/列表/中止等）。
+ * 所有卡片均使用 lark_md 格式展示 Markdown 内容。
+ */
 type Card = Record<string, unknown>
 
+/** 格式化 Session 标签（显示标题和 ID） */
 function sessionLabel(sessionId: string, sessionTitle?: string): string {
   return sessionTitle
     ? `Session: ${sessionTitle} | ${sessionId}`
@@ -16,11 +23,13 @@ function timeAgo(ms: number): string {
   return `${Math.floor(hours / 24)}天前`
 }
 
+/** 截断过长文本 */
 function truncate(text: string, maxLen = 4000): string {
   if (text.length <= maxLen) return text
   return text.slice(0, maxLen) + "\n\n...内容过长已截断"
 }
 
+/** 构建"思考中"卡片（蓝色） */
 export function buildThinkingCard(sessionId?: string, sessionTitle?: string): Card {
   return {
     config: { wide_screen_mode: true, update_multi: true },
@@ -38,6 +47,7 @@ export function buildThinkingCard(sessionId?: string, sessionTitle?: string): Ca
   }
 }
 
+/** 构建流式输出卡片（蓝色，实时更新内容） */
 export function buildStreamingCard(text: string, sessionId?: string, sessionTitle?: string): Card {
   const display = text || "🔄 正在思考中..."
   return {
@@ -56,6 +66,7 @@ export function buildStreamingCard(text: string, sessionId?: string, sessionTitl
   }
 }
 
+/** 构建最终结果卡片（绿色，支持分页提示） */
 export function buildResultCard(
   text: string,
   sessionId?: string,
@@ -93,6 +104,7 @@ export function buildResultCard(
   }
 }
 
+/** 构建错误提示卡片（红色） */
 export function buildErrorCard(message: string): Card {
   return {
     config: { wide_screen_mode: true, update_multi: true },
@@ -108,6 +120,7 @@ export function buildErrorCard(message: string): Card {
   }
 }
 
+/** 构建帮助卡片，列出所有可用命令 */
 export function buildHelpCard(): Card {
   return {
     config: { wide_screen_mode: true },
@@ -141,6 +154,7 @@ export function buildHelpCard(): Card {
 
 const PAGE_SIZE = 15
 
+/** 构建 Session 列表卡片，支持分页和关键词搜索 */
 export function buildSessionListCard(
   sessions: Array<{ id: string; slug: string; title: string; time: { updated: number } }>,
   bindingKey: string,
@@ -212,6 +226,7 @@ export function buildSessionListCard(
   }
 }
 
+/** 构建中止确认卡片（黄色） */
 export function buildAbortCard(sessionId: string, sessionTitle?: string): Card {
   return {
     config: { wide_screen_mode: true },

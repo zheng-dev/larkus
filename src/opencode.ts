@@ -1,6 +1,13 @@
+/**
+ * opencode - opencode AI 服务 API 封装
+ *
+ * 提供 Session 的 CRUD 操作、消息发送/流式接收、以及中止功能。
+ * 所有请求通过 Basic Auth 认证，支持本地缓存以降低 API 调用频率。
+ */
 import { Config } from "./config"
 import { error, debug } from "./logger"
 
+/** 获取 opencode 服务基础 URL（去除末尾斜杠） */
 function url() {
   return Config.opencode.url.replace(/\/$/, "")
 }
@@ -42,10 +49,12 @@ async function ocFetch(path: string, opts: RequestInit = {}) {
 
 const sessionCache = new Map<string, OcSession>()
 
+/** 从本地缓存中获取 Session */
 export function getCachedSession(id: string): OcSession | undefined {
   return sessionCache.get(id)
 }
 
+/** 获取所有 Session 列表，结果自动写入缓存 */
 export async function listSessions(): Promise<OcSession[]> {
   const res = await ocFetch("/session")
   const sessions: OcSession[] = await res.json()
@@ -55,6 +64,7 @@ export async function listSessions(): Promise<OcSession[]> {
   return sessions
 }
 
+/** 创建新 Session，默认标题为"飞书对话" */
 export async function createSession(title?: string): Promise<OcSession> {
   const res = await ocFetch("/session", {
     method: "POST",
@@ -65,6 +75,7 @@ export async function createSession(title?: string): Promise<OcSession> {
   return session
 }
 
+/** 获取单个 Session 详情（优先从缓存读取） */
 export async function getSession(id: string): Promise<OcSession | null> {
   const cached = sessionCache.get(id)
   if (cached) return cached
@@ -76,11 +87,13 @@ export async function getSession(id: string): Promise<OcSession | null> {
   return session
 }
 
+/** 获取 Session 内所有消息（包含 parts 详情） */
 export async function getMessages(sessionId: string): Promise<Array<{ info: OcMessage; parts: OcPart[] }>> {
   const res = await ocFetch(`/session/${sessionId}/message`)
   return res.json()
 }
 
+/** 发送同步 prompt 请求，等待完整结果返回 */
 export async function prompt(
   sessionId: string,
   text: string,
@@ -98,6 +111,7 @@ export async function prompt(
   return ""
 }
 
+/** 发送异步 prompt 请求，不等待结果（配合 streamPrompt 使用） */
 export async function promptAsync(
   sessionId: string,
   text: string,
@@ -108,6 +122,10 @@ export async function promptAsync(
   })
 }
 
+/**
+ * 将消息 parts 构建为展示文本
+ * 包含分析过程(reasoning)、工具调用(tool)和执行结果。
+ */
 export function buildStreamContent(parts: OcPart[]): { display: string; rawText: string; isFinal: boolean } {
   const reasoning = parts.find(p => p.type === "reasoning")
   const text = parts.find(p => p.type === "text")
@@ -140,6 +158,11 @@ export function buildStreamContent(parts: OcPart[]): { display: string; rawText:
   return { display, rawText, isFinal }
 }
 
+/**
+ * 流式发送 prompt 并轮询结果
+ * 先通过 promptAsync 异步触发，然后每 2 秒轮询消息列表，
+ * 当 content 变化时调用 onUpdate 回调，直到 step-finish 或 abort。
+ */
 export async function streamPrompt(
   sessionId: string,
   userText: string,
@@ -184,6 +207,7 @@ export async function streamPrompt(
   return finalText
 }
 
+/** 中止正在运行的 Session */
 export async function abortSession(sessionId: string): Promise<void> {
   await ocFetch(`/session/${sessionId}/abort`, { method: "POST" })
 }

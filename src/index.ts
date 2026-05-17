@@ -1,3 +1,12 @@
+/**
+ * oc-lark 应用入口
+ *
+ * 负责以下启动流程：
+ * 1. 加载/创建配置文件 (config.json)
+ * 2. 恢复聊天线程与 opencode Session 的绑定关系
+ * 3. 修复因服务重启遗留的"孤儿卡片"（pending cards）
+ * 4. 根据配置模式启动 webhook 服务或轮询服务
+ */
 import { init, load, save, fileExists, Config } from "./config"
 import { runSetup } from "./setup"
 import { loadBindings } from "./session"

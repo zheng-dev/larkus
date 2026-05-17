@@ -1,3 +1,9 @@
+/**
+ * bot - Webhook 模式消息处理
+ *
+ * 接收飞书开放平台推送的消息事件，解析用户文本或命令，
+ * 调用 opencode API 生成回复并通过流式卡片展示结果。
+ */
 import { verifySignature } from "./verify"
 import { getBinding, setBinding, removeBinding } from "./session"
 import * as Opencode from "./opencode"
@@ -7,6 +13,7 @@ import * as Pagination from "./pagination"
 import { error } from "./logger"
 import { addPendingCard, removePendingCard } from "./pending_cards"
 
+/** 当前活跃的流式请求，key = chatId:rootId，用于支持中断 */
 const activeStreams = new Map<string, AbortController>()
 
 function streamKey(chatId: string, rootId: string): string {
@@ -25,6 +32,10 @@ function parseCommand(text: string): { name: string; args: string } | null {
   return { name: m[1].toLowerCase(), args: m[2].trim() }
 }
 
+/**
+ * 处理飞书 Webhook 请求
+ * 支持 URL 验证、签名校验，并分发到消息事件处理器。
+ */
 export async function handleWebhook(req: Request): Promise<Response> {
   const body = await req.text()
 
@@ -250,6 +261,10 @@ async function processChatMessage(
   await streamResponse(sessionId, text, cardMsgId, key, sessionTitle)
 }
 
+/**
+ * 发起流式请求并实时更新消息卡片
+ * 监听 opencode 的 assistant 消息变化，持续更新飞书卡片直到对话结束。
+ */
 async function streamResponse(
   sessionId: string,
   userText: string,

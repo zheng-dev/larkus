@@ -1,3 +1,9 @@
+/**
+ * polling - 轮询模式消息处理
+ *
+ * 定时通过 lark-cli 拉取飞书群聊消息，解析并交由 opencode 处理。
+ * 支持 bot 不可达群聊的自动跳过与周期性重试。
+ */
 import * as Opencode from "./opencode"
 import * as Feishu from "./feishu"
 import * as Card from "./card"
@@ -7,6 +13,7 @@ import { getBinding, setBinding, removeBinding } from "./session"
 import { error, warn, debug } from "./logger"
 import { addPendingCard, removePendingCard } from "./pending_cards"
 
+/** 当前活跃的流式请求，key = chatId:rootId */
 const activeStreams = new Map<string, AbortController>()
 const lastPosition = new Map<string, number>()
 const unreachable = new Set<string>()
@@ -27,6 +34,11 @@ function parseCommand(text: string): { name: string; args: string } | null {
   return { name: m[1].toLowerCase(), args: m[2].trim() }
 }
 
+/**
+ * 启动轮询循环
+ * 先验证所有目标群聊的可达性，然后按指定间隔定时拉取新消息。
+ * 对不可达群聊每 5 个周期重试一次。
+ */
 export async function startPolling(chatIds: string[], intervalSec: number) {
   while (true) {
     unreachable.clear()
@@ -340,6 +352,10 @@ async function processChatMessage(
   await streamResponse(sessionId, text, cardMsgId, key, sessionTitle)
 }
 
+/**
+ * 发起流式请求并实时更新消息卡片
+ * 监听 opencode 的 assistant 消息变化，持续更新飞书卡片直到对话结束。
+ */
 async function streamResponse(
   sessionId: string,
   userText: string,
